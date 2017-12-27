@@ -26,7 +26,8 @@ DESC = 'desc'
 
 # Defaults.
 QUANTILE = 0.5  # median
-RESULT_FORMAT = ('EPQ (threshold at {q} quantile)\t{u} mean TAP\n'
+SUMMARY_FMT_E0 = 'Threshold\t{u} mean TAP\n{e0}\t{tap:.4f}'
+SUMMARY_FMT_K = ('EPQ (threshold at {q} quantile)\t{u} mean TAP\n'
                  '{k} ({e0})\t{tap:.4f}')
 QUERY_FMT = '{query} ({weight:g})\t{tap:.4f}'
 QUERY_FMT_UNW = '{query}\t{tap:.4f}'
@@ -64,17 +65,19 @@ def main():
         '-p', '--pad-insufficient', action='store_true',
         help='pad insufficient retrieval lists with irrelevant records')
     ap.add_argument(
-        '-f', '--result-format', metavar='FMT', type=unescape_backslashes,
-        default=RESULT_FORMAT,
-        help='format string for the overall result (default: %(default)r)')
+        '-s', '--summary-only', action='store_false',
+        dest='show_query_wise_result',
+        help='suppress query-wise results')
     ap.add_argument(
-        '-r', '--query-wise-result', metavar='FMT', type=unescape_backslashes,
-        nargs='?', const='',
-        help='format string for a result line per query. '
+        '-f', '--summary-format', metavar='FMT', type=unescape_backslashes,
+        help='format string for the result summary. '
+             'Available fields: k, e0, tap, q[uantile], u[nweighted]')
+    ap.add_argument(
+        '-Q', '--query-format', metavar='FMT', type=unescape_backslashes,
+        help='format string for a separate result line per query. '
              'Available fields: query, tap, weight, T_q '
-             '(default: suppress, '
-             'default without FMT: {!r} for weighted, '
-             '{!r} for unweighted TAP)'.format(QUERY_FMT, QUERY_FMT_UNW))
+             '(default: {!r} for weighted, {!r} for unweighted TAP)'
+             ''.format(QUERY_FMT, QUERY_FMT_UNW))
 
     args = ap.parse_args()
     try:
@@ -113,24 +116,30 @@ def run(infiles, k=None, e0=None, unweighted=False, monotonicity=None,
         run_one(**params)
 
 
-def run_one(quantile=QUANTILE, output=sys.stdout,
-            result_format=RESULT_FORMAT, query_wise_result=None, **params):
+def run_one(quantile=QUANTILE, output=sys.stdout, show_query_wise_result=False,
+            summary_format=None, query_format=None, **params):
     '''
     Evaluate and output TAP for one value of k or E0.
     '''
+    # Result computation.
     result = evaluate(quantile=quantile, **params)
 
+    # Output formatting.
     unweighted = all(r.weight == 1.0 for r in result.queries)
     params.update(
         tap=result.tap, k=result.k, e0=result.e0, q=quantile,
         u='unweighted' if unweighted else 'weighted')
-    print(result_format.format_map(params), file=output)
-    if query_wise_result is not None:
-        if query_wise_result == '':
-            query_wise_result = QUERY_FMT_UNW if unweighted else QUERY_FMT
+    # Summary.
+    if summary_format is None:
+        summary_format = SUMMARY_FMT_E0 if result.k is None else SUMMARY_FMT_K
+    print(summary_format.format_map(params), file=output)
+    # Query-wise results.
+    if show_query_wise_result:
+        if query_format is None:
+            query_format = QUERY_FMT_UNW if unweighted else QUERY_FMT
         print('\nIndividual results for each query:', file=output)
         for query in result.queries:
-            print(query_wise_result.format_map(query._asdict()), file=output)
+            print(query_format.format_map(query._asdict()), file=output)
         print(file=output)
 
 

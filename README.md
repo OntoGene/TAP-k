@@ -37,13 +37,13 @@ Run `TAP-k --help` to see a short description of all available options.
 
 Example call with minimal output:
 
-    $ TAP-k -i test/short.tsv -k 5
+    $ TAP-k -i test/short.tsv -k 5 -s
     EPQ (threshold at 0.5 quantile)	unweighted mean TAP
     5 (0.6545522081334377)	0.5664
 
 The input file format is the same as for the original program, which is described [here](https://www.ncbi.nlm.nih.gov/CBBresearch/Spouge/html_ncbi/html/tap/help.html).
 All output is written to STDOUT.
-The output format can be changed by specifying format strings (options `-f` and `-r`).
+The output format can be changed by specifying format strings (options `-f` and `-Q`).
 
 The module can also be used as a library:
 
