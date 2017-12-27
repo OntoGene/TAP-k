@@ -11,6 +11,9 @@ Compute Threshold Average Precision at (a median of) k errors per query.
 
 __version__ = '1.0b'
 
+__all__ = ('run', 'evaluate', 'tap', 'parserecords',
+           'InputError', 'InputFormatError', 'InputValueError')
+
 
 import re
 import sys
