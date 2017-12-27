@@ -38,41 +38,44 @@ def main():
     Run from commandline.
     '''
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument(
+    inparams = ap.add_argument_group('input')
+    inparams.add_argument(
         '-i', '--retrieval-lists',
         dest='infiles', nargs='+', default=['-'], metavar='PATH',
         help='one or more input files (UTF-8) containing retrieval lists '
              '(default: STDIN)')
-    eparam = ap.add_mutually_exclusive_group(required=True)
+    procparams = ap.add_argument_group('parameters')
+    eparam = procparams.add_mutually_exclusive_group(required=True)
     eparam.add_argument(
         '-k', type=posint, metavar='N', nargs='+',
         help='number of errors per query for calculating E0')
     eparam.add_argument(
         '-t', dest='e0', type=float, metavar='F', nargs='+',
         help='threshold score or E value (bypass `k`)')
-    ap.add_argument(
+    procparams.add_argument(
         '-m', '--monotonicity', choices=(ASC, DESC),
         help='descending scores or ascending E values? '
              '(default: the lists determine)')
-    ap.add_argument(
+    procparams.add_argument(
         '-q', '--quantile', type=zerotoone, default=QUANTILE, metavar='F',
         help='quantile q, 0.0 < q <= 1.0 '
              '(default: the median, 0.5)')
-    ap.add_argument(
+    procparams.add_argument(
         '-u', '--unweighted', action='store_true',
         help='ignore all weights, to perform an unweighted calculation')
-    ap.add_argument(
+    procparams.add_argument(
         '-p', '--pad-insufficient', action='store_true',
         help='pad insufficient retrieval lists with irrelevant records')
-    ap.add_argument(
+    outparams = ap.add_argument_group('output formatting')
+    outparams.add_argument(
         '-s', '--summary-only', action='store_false',
         dest='show_query_wise_result',
         help='suppress query-wise results')
-    ap.add_argument(
+    outparams.add_argument(
         '-f', '--summary-format', metavar='FMT', type=unescape_backslashes,
         help='format string for the result summary. '
              'Available fields: k, e0, tap, q[uantile], u[nweighted]')
-    ap.add_argument(
+    outparams.add_argument(
         '-Q', '--query-format', metavar='FMT', type=unescape_backslashes,
         help='format string for a separate result line per query. '
              'Available fields: query, tap, weight, T_q '
