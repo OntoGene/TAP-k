@@ -11,6 +11,7 @@ Compute Threshold Average Precision at (a median of) k errors per query.
 
 import re
 import sys
+import math
 import numbers
 import argparse
 from collections import namedtuple
@@ -45,6 +46,9 @@ def main():
         '-u', '--unweighted', action='store_true',
         help='ignore all weights, to perform an unweighted calculation')
     ap.add_argument(
+        '-p', '--pad-insufficient', action='store_true',
+        help='pad insufficient retrieval lists with irrelevant records')
+    ap.add_argument(
         '-f', '--result-format', metavar='FMT', type=unescape_backslashes,
         default='EPQ (threshold at {q} quantile)\t{u} mean TAP\n'
                 '{k} ({e0})\t{tap:.4f}',
@@ -58,8 +62,6 @@ def main():
              '-r without argument: %(const)r)')
 
     # TODO:
-    # * -p pad insufficient retrieval list(s) with irrelevant records
-    #       (E0 is NaN; no sentinel)
     # * more checks and error messages (eg. inconsistent monotonicity)
     # * if T_q == 0, an empty retrieval list should have a TAP of 1
 
@@ -120,12 +122,13 @@ def run_one(output, result_format, query_wise_result, **params):
             print(query_wise_result.format_map(query._asdict()), file=output)
 
 
-def evaluate(retlists, quantile, e0=None, **params):
+def evaluate(retlists, quantile, e0=None, pad_insufficient=False, **params):
     '''
     Calculate TAP-k for multiple queries.
     '''
     if e0 is None:
-        e0 = determine_E0(retlists, quantile=quantile, **params)
+        e0 = determine_E0(retlists, quantile=quantile,
+                          pad_insufficient=pad_insufficient, **params)
     return evaluate_e0(retlists, e0, **params)
 
 
@@ -141,7 +144,8 @@ def evaluate_e0(retlists, e0, ascending, k=None):
         def past_E0(score):
             'Threshold score is beyond E0.'
             return score < e0
-    results = [QueryResult(r.query, tap(r, past_E0), r.weight, r.T_q)
+    e0_nan = math.isnan(e0)
+    results = [QueryResult(r.query, tap(r, past_E0, e0_nan), r.weight, r.T_q)
                for r in retlists]
     avg_tap = (sum(r.tap * r.weight for r in results) /
                sum(r.weight for r in results))
@@ -151,7 +155,7 @@ Result = namedtuple('Result', 'tap k e0 queries')
 QueryResult = namedtuple('QueryResult', 'query tap weight T_q')
 
 
-def tap(records, past_E0):
+def tap(records, past_E0, e0_nan):
     '''
     Threshold average precision for one query.
     '''
@@ -173,17 +177,19 @@ def tap(records, past_E0):
             summed_precision += rel_count / i
     else:
         # We reached the last record without passing E0.
-        # This means we still need to add the sentinel.
-        # (Unless there were no records at all, in which case the summed
-        # precision is 0 by definition.)
-        if records:
+        # This means we still need to add the sentinel, unless
+        #  - there were no records at all, in which case the summed
+        #    precision is 0 by definition, or
+        #  - E0 is NaN as a result of truncated retrieval lists in
+        #    combination with the --pad-insufficient option.
+        if records and not e0_nan:
             summed_precision += rel_count / len(records)
     # Divide by the total number of relevant records,
     # plus one for the sentinel.
     return summed_precision / (records.T_q + 1)
 
 
-def determine_E0(retlists, k, quantile, ascending):
+def determine_E0(retlists, k, quantile, ascending, pad_insufficient):
     '''
     Determine E_k(A) based on the retrieved records.
 
@@ -222,10 +228,15 @@ def determine_E0(retlists, k, quantile, ascending):
     try:
         E0 = weighted_quantile(E_k, quantile, total_weights)
     except InputValueError:
-        # Re-raise with a proper message (the callee didn't have all info).
-        raise InputValueError(
-            'Fewer than {} of the retrieval lists have {} errors.'
-            .format(quantile, k))
+        # E0 can't be determined.
+        if pad_insufficient:
+            # Compute TAP of the complete retrieval lists (no cutoff at E0).
+            E0 = math.nan
+        else:
+            # Re-raise with a proper message (the callee didn't have all info).
+            raise InputValueError(
+                'Fewer than {} of the retrieval lists have {} errors.'
+                .format(quantile, k))
     return E0
 
 
