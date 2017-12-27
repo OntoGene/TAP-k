@@ -1,0 +1,3 @@
+* automated test suite
+* more checks and error messages (eg. inconsistent monotonicity)
+* compatible with Python 2.7

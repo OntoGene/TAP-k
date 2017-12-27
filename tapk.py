@@ -23,9 +23,9 @@ def main():
     '''
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
-        '-i', '--retrieval-lists', default='-', metavar='PATH',
-        type=argparse.FileType('r'), dest='infile',
-        help='a single input file containing retrieval lists '
+        '-i', '--retrieval-lists',
+        dest='infiles', nargs='+', default=['-'], metavar='PATH',
+        help='one or more input files (UTF-8) containing retrieval lists '
              '(default: STDIN)')
     eparam = ap.add_mutually_exclusive_group(required=True)
     eparam.add_argument(
@@ -61,9 +61,6 @@ def main():
              '(default: suppress query-wise results, '
              '-r without argument: %(const)r)')
 
-    # TODO:
-    # * more checks and error messages (eg. inconsistent monotonicity)
-
     args = ap.parse_args()
     try:
         run(output=sys.stdout, **vars(args))
@@ -76,11 +73,11 @@ def main():
         pass
 
 
-def run(infile, k, e0=None, unweighted=False, monotonicity=None, **params):
+def run(infiles, k, e0=None, unweighted=False, monotonicity=None, **params):
     '''
     Run with keyword args.
     '''
-    retlists = list(parserecords(infile, unweighted))
+    retlists = [rtl for fn in infiles for rtl in parserecords(fn, unweighted)]
 
     try:
         ascending = dict(asc=True, desc=False)[monotonicity]
@@ -117,8 +114,10 @@ def run_one(output, result_format, query_wise_result, **params):
         u='unweighted' if unweighted else 'weighted')
     print(result_format.format_map(params), file=output)
     if query_wise_result is not None:
+        print('\nIndividual results for each query:', file=output)
         for query in result.queries:
             print(query_wise_result.format_map(query._asdict()), file=output)
+        print(file=output)
 
 
 def evaluate(retlists, quantile, e0=None, pad_insufficient=False, **params):
@@ -278,12 +277,12 @@ def determine_monotonicity(retlists):
         'whether the lists are ascending or descending.')
 
 
-def parserecords(stream, unweighted=False):
+def parserecords(fn, unweighted=False):
     '''
     Iterate over RetrievalList instances parsed from plain-text.
     '''
     current = None
-    stream = enumerate(stream)  # make sure we can jump ahead inside the loop
+    stream = enumerate(smartopen(fn))
     for i, line in stream:
         try:
             current.add(line, i)
@@ -292,7 +291,7 @@ def parserecords(stream, unweighted=False):
             if line.strip():
                 # Consume the next line as well (without its line number).
                 current = RetrievalList.incremental_factory(
-                    line, next(stream)[1], i, unweighted)
+                    line, next(stream)[1], fn, i, unweighted)
         except BlankLineSignal:
             # This retrieval list has ended.
             # Yield it and reset current (so it won't be yielded again,
@@ -304,20 +303,32 @@ def parserecords(stream, unweighted=False):
         yield current
 
 
+def smartopen(fn):
+    '''
+    Open file if necessary and iterate over its lines.
+    '''
+    if fn == '-':
+        yield from sys.stdin
+    else:
+        with open(fn, encoding='utf8') as f:
+            yield from f
+
+
 class RetrievalList:
     '''
     A list of rated records and some metadata.
     '''
-    __slots__ = ('query', 'weight', 'T_q', 'records')
+    __slots__ = ('filename', 'query', 'weight', 'T_q', 'records')
 
-    def __init__(self, query, T_q, records, weight=1.0):
+    def __init__(self, filename, query, T_q, records, weight=1.0):
+        self.filename = filename
         self.query = query
         self.weight = weight
         self.T_q = T_q
         self.records = records
 
     @classmethod
-    def incremental_factory(cls, line1, line2, no, unweighted=False):
+    def incremental_factory(cls, line1, line2, fn, no, unweighted=False):
         '''
         Constructor for incremental building through parsing.
         '''
@@ -328,7 +339,7 @@ class RetrievalList:
             if str(e).startswith('too many values'):
                 raise InputFormatError(
                     'The line for a unique identifier '
-                    'should have at most 2 columns.', no, line1)
+                    'should have at most 2 columns.', fn, no, line1)
             # If the weight was missing, it defaults to 1.
             query = line1.strip()
             weight = 1.0
@@ -340,7 +351,7 @@ class RetrievalList:
             except ValueError:
                 raise InputFormatError(
                     'Column 2 in the line for a unique identifier '
-                    'should be a positive weight.', no, line1)
+                    'should be a positive weight.', fn, no, line1)
         try:
             T_q = int(line2)
             if T_q < 0:
@@ -348,11 +359,11 @@ class RetrievalList:
         except ValueError:
             raise InputFormatError(
                 'The line containing the number of relevant records '
-                'should be a non-negative integer', no+1, line2)
+                'should be a non-negative integer', fn, no+1, line2)
         # Construct a RetrievalList with a (yet) empty records list.
         if unweighted:
             weight = 1.0
-        return cls(query, T_q, [], weight)
+        return cls(fn, query, T_q, [], weight)
 
     def add(self, line, no):
         'Parse and add an input record.'
@@ -369,7 +380,7 @@ class RetrievalList:
                 raise InputFormatError(
                     'Column 1 should have shown record relevancy as 0 or 1.\n'
                     'Column 2 should have shown the record score as a float.',
-                    no, line)
+                    self.filename, no, line)
         self.records.append((bool(relevance), score))
 
     def __iter__(self):
@@ -384,15 +395,17 @@ class BlankLineSignal(Exception):
 
 class InputFormatError(Exception):
     'Input text could not be parsed.'
-    def __init__(self, message, line_number, line):
-        super().__init__(message, line_number, line)
+    def __init__(self, message, filename, line_number, line):
+        super().__init__(message, filename, line_number, line)
+        self.filename = filename
         self.message = message
         self.line_number = line_number
         self.line = line
 
     def __str__(self):
-        no = 'Offending input line: {}'.format(self.line_number)
-        return '\n'.join((self.message, no, self.line))
+        location = ('Offending input file: {}, line: {}'
+                    .format(self.filename, self.line_number))
+        return '\n'.join((self.message, location, self.line))
 
 class InputValueError(Exception):
     'Input is incomplete or inconsistent.'
