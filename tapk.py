@@ -17,6 +17,13 @@ import argparse
 from collections import namedtuple
 
 
+# Defaults.
+QUANTILE = 0.5  # median
+RESULT_FORMAT = ('EPQ (threshold at {q} quantile)\t{u} mean TAP\n'
+                 '{k} ({e0})\t{tap:.4f}')
+QUERY_WISE_RESULT = '{query}\t{tap}'
+
+
 def main():
     '''
     Run from commandline.
@@ -39,7 +46,7 @@ def main():
         help='descending scores or ascending E values? '
              '(default: the lists determine)')
     ap.add_argument(
-        '-q', '--quantile', type=zerotoone, default=0.5, metavar='F',
+        '-q', '--quantile', type=zerotoone, default=QUANTILE, metavar='F',
         help='quantile q, 0.0 < q <= 1.0 '
              '(default: the median, 0.5)')
     ap.add_argument(
@@ -50,12 +57,11 @@ def main():
         help='pad insufficient retrieval lists with irrelevant records')
     ap.add_argument(
         '-f', '--result-format', metavar='FMT', type=unescape_backslashes,
-        default='EPQ (threshold at {q} quantile)\t{u} mean TAP\n'
-                '{k} ({e0})\t{tap:.4f}',
+        default=RESULT_FORMAT,
         help='format string for the overall result (default: %(default)r)')
     ap.add_argument(
         '-r', '--query-wise-result', metavar='FMT', type=unescape_backslashes,
-        nargs='?', const='{query}\t{tap}',
+        nargs='?', const=QUERY_WISE_RESULT,
         help='format string for a result line per query. '
              'Available fields: query, tap, weight, T_q '
              '(default: suppress query-wise results, '
@@ -73,7 +79,8 @@ def main():
         pass
 
 
-def run(infiles, k, e0=None, unweighted=False, monotonicity=None, **params):
+def run(infiles, k=None, e0=None, unweighted=False, monotonicity=None,
+        **params):
     '''
     Run with keyword args.
     '''
@@ -102,15 +109,16 @@ def run(infiles, k, e0=None, unweighted=False, monotonicity=None, **params):
         run_one(**params)
 
 
-def run_one(output, result_format, query_wise_result, **params):
+def run_one(quantile=QUANTILE, output=sys.stdout,
+            result_format=RESULT_FORMAT, query_wise_result=None, **params):
     '''
     Evaluate and output TAP for one value of k or E0.
     '''
-    result = evaluate(**params)
+    result = evaluate(quantile=quantile, **params)
 
-    unweighted = all(r.weight == 1 for r in result.queries)
+    unweighted = all(r.weight == 1.0 for r in result.queries)
     params.update(
-        tap=result.tap, k=result.k, e0=result.e0, q=params['quantile'],
+        tap=result.tap, k=result.k, e0=result.e0, q=quantile,
         u='unweighted' if unweighted else 'weighted')
     print(result_format.format_map(params), file=output)
     if query_wise_result is not None:
@@ -120,7 +128,8 @@ def run_one(output, result_format, query_wise_result, **params):
         print(file=output)
 
 
-def evaluate(retlists, quantile, e0=None, pad_insufficient=False, **params):
+def evaluate(retlists, quantile=QUANTILE, e0=None, pad_insufficient=False,
+             **params):
     '''
     Calculate TAP-k for multiple queries.
     '''
