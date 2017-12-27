@@ -1,2 +1,2 @@
 * automated test suite
-* add setup.py
+* different result format for k=None and given E0
