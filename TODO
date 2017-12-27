@@ -1,4 +1,3 @@
 * automated test suite
 * more checks and error messages (eg. inconsistent monotonicity)
 * add setup.py
-* include weights in default query-wise output

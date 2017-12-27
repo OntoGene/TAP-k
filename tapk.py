@@ -21,7 +21,8 @@ from collections import namedtuple
 QUANTILE = 0.5  # median
 RESULT_FORMAT = ('EPQ (threshold at {q} quantile)\t{u} mean TAP\n'
                  '{k} ({e0})\t{tap:.4f}')
-QUERY_WISE_RESULT = '{query}\t{tap}'
+QUERY_FMT = '{query} ({weight:g})\t{tap:.4f}'
+QUERY_FMT_UNW = '{query}\t{tap:.4f}'
 
 
 def main():
@@ -61,11 +62,12 @@ def main():
         help='format string for the overall result (default: %(default)r)')
     ap.add_argument(
         '-r', '--query-wise-result', metavar='FMT', type=unescape_backslashes,
-        nargs='?', const=QUERY_WISE_RESULT,
+        nargs='?', const='',
         help='format string for a result line per query. '
              'Available fields: query, tap, weight, T_q '
-             '(default: suppress query-wise results, '
-             '-r without argument: %(const)r)')
+             '(default: suppress, '
+             'default without FMT: {!r} for weighted, '
+             '{!r} for unweighted TAP)'.format(QUERY_FMT, QUERY_FMT_UNW))
 
     args = ap.parse_args()
     try:
@@ -122,6 +124,8 @@ def run_one(quantile=QUANTILE, output=sys.stdout,
         u='unweighted' if unweighted else 'weighted')
     print(result_format.format_map(params), file=output)
     if query_wise_result is not None:
+        if query_wise_result == '':
+            query_wise_result = QUERY_FMT_UNW if unweighted else QUERY_FMT
         print('\nIndividual results for each query:', file=output)
         for query in result.queries:
             print(query_wise_result.format_map(query._asdict()), file=output)
