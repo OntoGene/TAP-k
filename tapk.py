@@ -17,6 +17,10 @@ import argparse
 from collections import namedtuple
 
 
+# Constants.
+ASC = 'asc'
+DESC = 'desc'
+
 # Defaults.
 QUANTILE = 0.5  # median
 RESULT_FORMAT = ('EPQ (threshold at {q} quantile)\t{u} mean TAP\n'
@@ -37,13 +41,13 @@ def main():
              '(default: STDIN)')
     eparam = ap.add_mutually_exclusive_group(required=True)
     eparam.add_argument(
-        '-k', type=int, metavar='N', nargs='+',
+        '-k', type=posint, metavar='N', nargs='+',
         help='number of errors per query for calculating E0')
     eparam.add_argument(
         '-t', dest='e0', type=float, metavar='F', nargs='+',
         help='threshold score or E value (bypass `k`)')
     ap.add_argument(
-        '-m', '--monotonicity', choices=('asc', 'desc'),
+        '-m', '--monotonicity', choices=(ASC, DESC),
         help='descending scores or ascending E values? '
              '(default: the lists determine)')
     ap.add_argument(
@@ -72,10 +76,8 @@ def main():
     args = ap.parse_args()
     try:
         run(output=sys.stdout, **vars(args))
-    except InputFormatError as e:
+    except InputError as e:
         ap.exit(str(e))  # no usage message
-    except InputValueError as e:
-        ap.error(str(e))
     except BrokenPipeError:
         # Die silently when the output is truncated by Unix head or less.
         pass
@@ -86,15 +88,12 @@ def run(infiles, k=None, e0=None, unweighted=False, monotonicity=None,
     '''
     Run with keyword args.
     '''
+    # Parse and sanity-check the retrieval lists.
     retlists = [rl for src in infiles for rl in parserecords(src, unweighted)]
+    monotonicity = sanity_check(retlists, monotonicity)
+    params.update(retlists=retlists, ascending=monotonicity == ASC)
 
-    try:
-        ascending = dict(asc=True, desc=False)[monotonicity]
-    except KeyError:
-        ascending = determine_monotonicity(retlists)
-
-    params.update(retlists=retlists, ascending=ascending)
-
+    # Iterate over multiple values of E0 or k, depending on what is given.
     if e0 is not None:
         elems = e0
         p = 'e0'
@@ -238,14 +237,14 @@ def determine_E0(retlists, k, quantile, ascending, pad_insufficient):
     E_k.sort(reverse=not ascending)
     try:
         E0 = weighted_quantile(E_k, quantile, total_weights)
-    except InputValueError:
+    except InputError:
         # E0 can't be determined.
         if pad_insufficient:
             # Compute TAP of the complete retrieval lists (no cutoff at E0).
             E0 = math.nan
         else:
             # Re-raise with a proper message (the callee didn't have all info).
-            raise InputValueError(
+            raise InputError(
                 'Fewer than {} of the retrieval lists have {} errors.'
                 .format(quantile, k))
     return E0
@@ -264,30 +263,37 @@ def weighted_quantile(weighted_scores, quantile, total_weights):
             return s
     # If we get here, then we fell off the end of the list --
     # there are not enough retrieval lists with k errors.
-    raise InputValueError  # construct the message in the caller
+    raise InputError  # construct the message in the caller
 
 
-def determine_monotonicity(retlists):
+def sanity_check(retlists, monotonicity):
     '''
-    Find out if we have ascending E values or descending scores.
+    Thoroughly check the retrieval lists and determine monotonicity.
 
-    Returns True for ascending, False for descending values.
-    If the monotonicity cannot be determined, raise InputValueError.
+    Any failure raises an InputError.
+    On success, return the monotonicity (ASC or DESC).
+
+    Check the following:
+    - at least 1 retrieval list given
+    - number of relevant records is less than or euqal to T_q
+    - monotonicity
+      * is determined (either through -m or the data)
+      * is given in each list
+      * is consistent among all lists
+      * if given through -m, is consistent with the data
     '''
+    if not retlists:
+        raise InputError('no retrieval list found')
     for records in retlists:
-        comp = None
-        for _, score in records:
-            try:
-                if score > comp:
-                    return True
-                if score < comp:
-                    return False
-            except TypeError:
-                comp = score
-    raise InputValueError(
-        'Every retrieval list was empty or repeated the same score or E-value,\n'
-        'in which case you must specify through the -m/--monotonicity option\n'
-        'whether the lists are ascending or descending.')
+        records.check_rel_count()
+        monotonicity = records.check_monotonicity(monotonicity)
+    if monotonicity is None:
+        raise InputError(
+            'Every retrieval list was empty or repeated the same score or '
+            'E-value,\nin which case you must specify through the -m/'
+            '--monotonicity option\n'
+            'whether the lists are ascending or descending.')
+    return monotonicity
 
 
 def parserecords(source, unweighted=False):
@@ -401,6 +407,54 @@ class RetrievalList:
                     self.source, no, line)
         self.records.append((bool(relevance), score))
 
+    def check_rel_count(self):
+        '''
+        The number of records marked as relevant must not exceed T_q.
+        '''
+        total = sum(rel for rel, _ in self)
+        if total > self.T_q:
+            raise InputValueError(
+                'too many records marked as relevant (found {}, T_q = {})'
+                .format(total, self.T_q),
+                self.source, self.query)
+
+    def check_monotonicity(self, given):
+        '''
+        Check and (if necessary) determine monotonicity.
+        '''
+        found = None
+        for a, b in self._bigram_scores():
+            found = self._monotonicity(a, b)
+            if found is None:
+                continue
+            elif given is None:
+                given = found
+            elif found != given:
+                raise InputValueError(
+                    'monotonicity violation (given {}, found {})'
+                    .format(given, found),
+                    self.source, self.query)
+        return found or given
+
+    def _bigram_scores(self):
+        if len(self) < 2:
+            # Short-circuit for insufficient lists.
+            return
+        i = (score for _, score in self)
+        first = next(i)
+        for second in i:
+            yield first, second
+            first = second
+
+    @staticmethod
+    def _monotonicity(a, b):
+        if a < b:
+            return ASC
+        elif a > b:
+            return DESC
+        else:
+            return None
+
     def __iter__(self):
         return iter(self.records)
 
@@ -411,17 +465,25 @@ class RetrievalList:
 class BlankLineSignal(Exception):
     'Empty input line.'
 
-class InputFormatError(Exception):
-    'Input text could not be parsed.'
-    def __init__(self, message, source, line_number, line):
+class InputError(Exception):
+    'Unspecific input-related problem.'
+
+class _LocatableInputError(InputError):
+    'Base class for errors with a specific source.'
+    def __init__(self, message, source, *args):
         if not isinstance(source, str):
             # Limit source description to 99 characters.
             source = repr(source)
             if len(source) >= 100:
                 source = '{}...{}'.format(source[:48], source[-48:])
-        super().__init__(message, source, line_number, line)
+        super().__init__(message, source, *args)
         self.source = source
         self.message = message
+
+class InputFormatError(_LocatableInputError):
+    'Input text could not be parsed.'
+    def __init__(self, message, source, line_number, line):
+        super().__init__(message, source, line_number, line)
         self.line_number = line_number
         self.line = line
 
@@ -430,8 +492,26 @@ class InputFormatError(Exception):
                     .format(self.source, self.line_number))
         return '\n'.join((self.message, location, self.line))
 
-class InputValueError(Exception):
+class InputValueError(_LocatableInputError):
     'Input is incomplete or inconsistent.'
+    def __init__(self, message, source, query):
+        super().__init__(message, source, query)
+        self.query = query
+
+    def __str__(self):
+        return ('File {}, query {}: {}'
+                .format(self.source, self.query, self.message))
+
+
+def posint(expr):
+    '''
+    Make sure expr is a positive integer.
+    '''
+    k = int(expr)
+    if k <= 0:
+        raise argparse.ArgumentTypeError(
+            '{} is not a positive integer'.format(expr))
+    return k
 
 
 def zerotoone(expr):
