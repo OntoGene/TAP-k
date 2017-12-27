@@ -63,7 +63,6 @@ def main():
 
     # TODO:
     # * more checks and error messages (eg. inconsistent monotonicity)
-    # * if T_q == 0, an empty retrieval list should have a TAP of 1
 
     args = ap.parse_args()
     try:
@@ -159,31 +158,31 @@ def tap(records, past_E0, e0_nan):
     '''
     Threshold average precision for one query.
     '''
-    # Sum precision value at each relevant record.
-    summed_precision = 0
+    summed_precision = 0.0
     rel_count = 0  # number of relevant records seen so far
-    for i, (relevance, score) in enumerate(records, 1):
+    retrieved = 0  # number of records considered
+    for relevance, score in records:
         if past_E0(score):
-            # We are past the cutoff point E0.
-            # The sentinel needs to be added to the average
-            # (a second time if the last record was relevant).
-            if rel_count:
-                # No need to add 0 precision.
-                # Also, avoid ZeroDivisionError in case of the first record.
-                summed_precision += rel_count / (i-1)
+            # Exit the loop without updating the retrieved count.
             break
+        retrieved += 1
+        # Sum precision value at each relevant record.
         if relevance:
             rel_count += 1
-            summed_precision += rel_count / i
-    else:
-        # We reached the last record without passing E0.
-        # This means we still need to add the sentinel, unless
+            summed_precision += rel_count / retrieved
+
+    if not records.T_q:
+        # No ground-truth targets: Retrieving nothing is the right thing to do.
+        summed_precision = 1.0 / (retrieved + 1)
+    elif retrieved and not e0_nan:
+        # The sentinel needs to be added to the average
+        # (a second time if the last retrieved record was relevant), unless
         #  - there were no records at all, in which case the summed
         #    precision is 0 by definition, or
         #  - E0 is NaN as a result of truncated retrieval lists in
         #    combination with the --pad-insufficient option.
-        if records and not e0_nan:
-            summed_precision += rel_count / len(records)
+        summed_precision += rel_count / retrieved
+
     # Divide by the total number of relevant records,
     # plus one for the sentinel.
     return summed_precision / (records.T_q + 1)
