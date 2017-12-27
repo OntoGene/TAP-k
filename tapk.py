@@ -11,16 +11,13 @@ Compute Threshold Average Precision at (a median of) k errors per query.
 
 __version__ = '1.0b'
 
-__all__ = ('run', 'evaluate', 'tap', 'parserecords',
-           'InputError', 'InputFormatError', 'InputValueError')
 
-
-import re
-import sys
-import math
-import numbers
-import argparse
-from collections import namedtuple
+import re as _re
+import sys as _sys
+import math as _math
+import numbers as _numbers
+import argparse as _argparse
+from collections import namedtuple as _namedtuple
 
 
 # Constants.
@@ -40,7 +37,7 @@ def main():
     '''
     Run from commandline.
     '''
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = _argparse.ArgumentParser(description=__doc__)
     inparams = ap.add_argument_group('input')
     inparams.add_argument(
         '-i', '--retrieval-lists',
@@ -50,7 +47,7 @@ def main():
     procparams = ap.add_argument_group('parameters')
     eparam = procparams.add_mutually_exclusive_group(required=True)
     eparam.add_argument(
-        '-k', type=posint, metavar='N', nargs='+',
+        '-k', type=_posint, metavar='N', nargs='+',
         help='number of errors per query for calculating E0')
     eparam.add_argument(
         '-t', dest='e0', type=float, metavar='F', nargs='+',
@@ -60,7 +57,7 @@ def main():
         help='descending scores or ascending E values? '
              '(default: the lists determine)')
     procparams.add_argument(
-        '-q', '--quantile', type=zerotoone, default=QUANTILE, metavar='F',
+        '-q', '--quantile', type=_zerotoone, default=QUANTILE, metavar='F',
         help='quantile q, 0.0 < q <= 1.0 '
              '(default: the median, 0.5)')
     procparams.add_argument(
@@ -75,11 +72,11 @@ def main():
         dest='show_query_wise_result',
         help='suppress query-wise results')
     outparams.add_argument(
-        '-f', '--summary-format', metavar='FMT', type=unescape_backslashes,
+        '-f', '--summary-format', metavar='FMT', type=_unescape_backslashes,
         help='format string for the result summary. '
              'Available fields: k, e0, tap, q[uantile], u[nweighted]')
     outparams.add_argument(
-        '-Q', '--query-format', metavar='FMT', type=unescape_backslashes,
+        '-Q', '--query-format', metavar='FMT', type=_unescape_backslashes,
         help='format string for a separate result line per query. '
              'Available fields: query, tap, weight, T_q '
              '(default: {!r} for weighted, {!r} for unweighted TAP)'
@@ -90,7 +87,7 @@ def main():
 
     args = ap.parse_args()
     try:
-        run(output=sys.stdout, **vars(args))
+        run(output=_sys.stdout, **vars(args))
     except InputError as e:
         ap.exit(str(e))  # no usage message
     except BrokenPipeError:
@@ -105,7 +102,7 @@ def run(infiles, k=None, e0=None, unweighted=False, monotonicity=None,
     '''
     # Parse and sanity-check the retrieval lists.
     retlists = [rl for src in infiles for rl in parserecords(src, unweighted)]
-    monotonicity = sanity_check(retlists, monotonicity)
+    monotonicity = _sanity_check(retlists, monotonicity)
     params.update(retlists=retlists, ascending=monotonicity == ASC)
 
     # Iterate over multiple values of E0 or k, depending on what is given.
@@ -117,16 +114,16 @@ def run(infiles, k=None, e0=None, unweighted=False, monotonicity=None,
         p = 'k'
     else:
         raise ValueError('either k or e0 must be specified')
-    if isinstance(elems, numbers.Number):
+    if isinstance(elems, _numbers.Number):
         elems = (elems,)
 
     for e in elems:
         params[p] = e
-        run_one(**params)
+        _run_one(**params)
 
 
-def run_one(quantile=QUANTILE, output=sys.stdout, show_query_wise_result=False,
-            summary_format=None, query_format=None, **params):
+def _run_one(quantile=QUANTILE, output=_sys.stdout, show_query_wise_result=False,
+             summary_format=None, query_format=None, **params):
     '''
     Evaluate and output TAP for one value of k or E0.
     '''
@@ -158,12 +155,12 @@ def evaluate(retlists, quantile=QUANTILE, e0=None, pad_insufficient=False,
     Calculate TAP-k for multiple queries.
     '''
     if e0 is None:
-        e0 = determine_E0(retlists, quantile=quantile,
-                          pad_insufficient=pad_insufficient, **params)
-    return evaluate_e0(retlists, e0, **params)
+        e0 = _determine_E0(retlists, quantile=quantile,
+                           pad_insufficient=pad_insufficient, **params)
+    return _evaluate_e0(retlists, e0, **params)
 
 
-def evaluate_e0(retlists, e0, ascending, k=None):
+def _evaluate_e0(retlists, e0, ascending, k=None):
     '''
     Calculate TAP for a given threshold, for multiple queries.
     '''
@@ -175,15 +172,15 @@ def evaluate_e0(retlists, e0, ascending, k=None):
         def past_E0(score):
             'Threshold score is beyond E0.'
             return score < e0
-    e0_nan = math.isnan(e0)
+    e0_nan = _math.isnan(e0)
     results = [QueryResult(r.query, tap(r, past_E0, e0_nan), r.weight, r.T_q)
                for r in retlists]
     avg_tap = (sum(r.tap * r.weight for r in results) /
                sum(r.weight for r in results))
     return Result(avg_tap, k, e0, results)
 
-Result = namedtuple('Result', 'tap k e0 queries')
-QueryResult = namedtuple('QueryResult', 'query tap weight T_q')
+Result = _namedtuple('Result', 'tap k e0 queries')
+QueryResult = _namedtuple('QueryResult', 'query tap weight T_q')
 
 
 def tap(records, past_E0, e0_nan):
@@ -220,7 +217,7 @@ def tap(records, past_E0, e0_nan):
     return summed_precision / (records.T_q + 1)
 
 
-def determine_E0(retlists, k, quantile, ascending, pad_insufficient):
+def _determine_E0(retlists, k, quantile, ascending, pad_insufficient):
     '''
     Determine E_k(A) based on the retrieved records.
 
@@ -257,12 +254,12 @@ def determine_E0(retlists, k, quantile, ascending, pad_insufficient):
     # Sort the scores from best to worst.
     E_k.sort(reverse=not ascending)
     try:
-        E0 = weighted_quantile(E_k, quantile, total_weights)
+        E0 = _weighted_quantile(E_k, quantile, total_weights)
     except InputError:
         # E0 can't be determined.
         if pad_insufficient:
             # Compute TAP of the complete retrieval lists (no cutoff at E0).
-            E0 = math.nan
+            E0 = _math.nan
         else:
             # Re-raise with a proper message (the callee didn't have all info).
             raise InputError(
@@ -271,7 +268,7 @@ def determine_E0(retlists, k, quantile, ascending, pad_insufficient):
     return E0
 
 
-def weighted_quantile(weighted_scores, quantile, total_weights):
+def _weighted_quantile(weighted_scores, quantile, total_weights):
     '''
     Walk through the sorted scores until quantile is reached.
     '''
@@ -287,7 +284,7 @@ def weighted_quantile(weighted_scores, quantile, total_weights):
     raise InputError  # construct the message in the caller
 
 
-def sanity_check(retlists, monotonicity):
+def _sanity_check(retlists, monotonicity):
     '''
     Thoroughly check the retrieval lists and determine monotonicity.
 
@@ -319,10 +316,10 @@ def sanity_check(retlists, monotonicity):
 
 def parserecords(source, unweighted=False):
     '''
-    Iterate over RetrievalList instances parsed from plain-text.
+    Iterate over _RetrievalList instances parsed from plain-text.
     '''
     current = None
-    stream = enumerate(smartopen(source))
+    stream = enumerate(_smartopen(source))
     for i, line in stream:
         try:
             current.add(line, i)
@@ -330,9 +327,9 @@ def parserecords(source, unweighted=False):
             # current is None: Start a new retrieval list.
             if line.strip():
                 # Consume the next line as well (without its line number).
-                current = RetrievalList.incremental_factory(
+                current = _RetrievalList.incremental_factory(
                     line, next(stream)[1], source, i, unweighted)
-        except BlankLineSignal:
+        except _BlankLineSignal:
             # This retrieval list has ended.
             # Yield it and reset current (so it won't be yielded again,
             # since multiple blank lines are allowed).
@@ -343,13 +340,13 @@ def parserecords(source, unweighted=False):
         yield current
 
 
-def smartopen(source):
+def _smartopen(source):
     '''
     Open file if necessary and iterate over its lines.
     '''
     if source == '-':
         # STDIN.
-        yield from sys.stdin
+        yield from _sys.stdin
     elif isinstance(source, str):
         # File name.
         with open(source, encoding='utf8') as f:
@@ -359,7 +356,7 @@ def smartopen(source):
         yield from source
 
 
-class RetrievalList:
+class _RetrievalList:
     '''
     A list of rated records and some metadata.
     '''
@@ -405,7 +402,7 @@ class RetrievalList:
             raise InputFormatError(
                 'The line containing the number of relevant records '
                 'should be a non-negative integer', src, no+1, line2)
-        # Construct a RetrievalList with a (yet) empty records list.
+        # Construct a _RetrievalList with a (yet) empty records list.
         if unweighted:
             weight = 1.0
         return cls(src, query, T_q, [], weight)
@@ -420,7 +417,7 @@ class RetrievalList:
             score = float(score)
         except ValueError:
             if not line.strip():
-                raise BlankLineSignal()
+                raise _BlankLineSignal()
             else:
                 raise InputFormatError(
                     'Column 1 should have shown record relevancy as 0 or 1.\n'
@@ -483,7 +480,7 @@ class RetrievalList:
         return len(self.records)
 
 
-class BlankLineSignal(Exception):
+class _BlankLineSignal(Exception):
     'Empty input line.'
 
 class InputError(Exception):
@@ -524,29 +521,37 @@ class InputValueError(_LocatableInputError):
                 .format(self.source, self.query, self.message))
 
 
-def posint(expr):
+def _posint(expr):
     '''
     Make sure expr is a positive integer.
     '''
-    k = int(expr)
+    try:
+        k = int(expr)
+    except ValueError:
+        raise _argparse.ArgumentTypeError(
+            'cannot parse as integer: {}'.format(expr))
     if k <= 0:
-        raise argparse.ArgumentTypeError(
+        raise _argparse.ArgumentTypeError(
             '{} is not a positive integer'.format(expr))
     return k
 
 
-def zerotoone(expr):
+def _zerotoone(expr):
     '''
     Make sure expr is a float in the interval ]0..1].
     '''
-    q = float(expr)
+    try:
+        q = float(expr)
+    except ValueError:
+        raise _argparse.ArgumentTypeError(
+            'cannot parse as float: {}'.format(expr))
     if not 0 < q <= 1:
-        raise argparse.ArgumentTypeError(
+        raise _argparse.ArgumentTypeError(
             'violation of 0 < q <= 1 (given: {})'.format(expr))
     return q
 
 
-def unescape_backslashes(expr):
+def _unescape_backslashes(expr):
     '''
     Process a few backslash sequences.
 
@@ -558,9 +563,9 @@ def unescape_backslashes(expr):
     def map_(match):
         'Map the sequence to its character.'
         return mapping[match.group()]
-    expr = re.sub(r'''(?<!\\)  # negative lookbehind: no preceding backslash
-                      \\[tnr]  # escaped tab, LF, or CR''',
-                  map_, expr, flags=re.VERBOSE)
+    expr = _re.sub(r'''(?<!\\)  # negative lookbehind: no preceding backslash
+                       \\[tnr]  # escaped tab, LF, or CR''',
+                   map_, expr, flags=_re.VERBOSE)
     # Unescape backslashes.
     expr = expr.replace('\\\\', '\\')
     return expr
