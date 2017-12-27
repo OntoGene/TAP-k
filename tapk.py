@@ -81,6 +81,9 @@ def main():
              'Available fields: query, tap, weight, T_q '
              '(default: {!r} for weighted, {!r} for unweighted TAP)'
              ''.format(QUERY_FMT, QUERY_FMT_UNW))
+    ap.add_argument(
+        '-V', '--version', action='version',
+        version='TAP-k {}'.format(__version__))
 
     args = ap.parse_args()
     try:
