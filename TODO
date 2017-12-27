@@ -2,5 +2,4 @@
 * more checks and error messages (eg. inconsistent monotonicity)
 * add setup.py
 * include weights in default query-wise output
-* accept open files and other iterables as input
 * add defaults for library usage

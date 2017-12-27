@@ -77,7 +77,7 @@ def run(infiles, k, e0=None, unweighted=False, monotonicity=None, **params):
     '''
     Run with keyword args.
     '''
-    retlists = [rtl for fn in infiles for rtl in parserecords(fn, unweighted)]
+    retlists = [rl for src in infiles for rl in parserecords(src, unweighted)]
 
     try:
         ascending = dict(asc=True, desc=False)[monotonicity]
@@ -277,12 +277,12 @@ def determine_monotonicity(retlists):
         'whether the lists are ascending or descending.')
 
 
-def parserecords(fn, unweighted=False):
+def parserecords(source, unweighted=False):
     '''
     Iterate over RetrievalList instances parsed from plain-text.
     '''
     current = None
-    stream = enumerate(smartopen(fn))
+    stream = enumerate(smartopen(source))
     for i, line in stream:
         try:
             current.add(line, i)
@@ -291,7 +291,7 @@ def parserecords(fn, unweighted=False):
             if line.strip():
                 # Consume the next line as well (without its line number).
                 current = RetrievalList.incremental_factory(
-                    line, next(stream)[1], fn, i, unweighted)
+                    line, next(stream)[1], source, i, unweighted)
         except BlankLineSignal:
             # This retrieval list has ended.
             # Yield it and reset current (so it won't be yielded again,
@@ -303,32 +303,37 @@ def parserecords(fn, unweighted=False):
         yield current
 
 
-def smartopen(fn):
+def smartopen(source):
     '''
     Open file if necessary and iterate over its lines.
     '''
-    if fn == '-':
+    if source == '-':
+        # STDIN.
         yield from sys.stdin
-    else:
-        with open(fn, encoding='utf8') as f:
+    elif isinstance(source, str):
+        # File name.
+        with open(source, encoding='utf8') as f:
             yield from f
+    else:
+        # Anything else: try to iterate over.
+        yield from source
 
 
 class RetrievalList:
     '''
     A list of rated records and some metadata.
     '''
-    __slots__ = ('filename', 'query', 'weight', 'T_q', 'records')
+    __slots__ = ('source', 'query', 'weight', 'T_q', 'records')
 
-    def __init__(self, filename, query, T_q, records, weight=1.0):
-        self.filename = filename
+    def __init__(self, source, query, T_q, records, weight=1.0):
+        self.source = source
         self.query = query
         self.weight = weight
         self.T_q = T_q
         self.records = records
 
     @classmethod
-    def incremental_factory(cls, line1, line2, fn, no, unweighted=False):
+    def incremental_factory(cls, line1, line2, src, no, unweighted=False):
         '''
         Constructor for incremental building through parsing.
         '''
@@ -339,7 +344,7 @@ class RetrievalList:
             if str(e).startswith('too many values'):
                 raise InputFormatError(
                     'The line for a unique identifier '
-                    'should have at most 2 columns.', fn, no, line1)
+                    'should have at most 2 columns.', src, no, line1)
             # If the weight was missing, it defaults to 1.
             query = line1.strip()
             weight = 1.0
@@ -351,7 +356,7 @@ class RetrievalList:
             except ValueError:
                 raise InputFormatError(
                     'Column 2 in the line for a unique identifier '
-                    'should be a positive weight.', fn, no, line1)
+                    'should be a positive weight.', src, no, line1)
         try:
             T_q = int(line2)
             if T_q < 0:
@@ -359,11 +364,11 @@ class RetrievalList:
         except ValueError:
             raise InputFormatError(
                 'The line containing the number of relevant records '
-                'should be a non-negative integer', fn, no+1, line2)
+                'should be a non-negative integer', src, no+1, line2)
         # Construct a RetrievalList with a (yet) empty records list.
         if unweighted:
             weight = 1.0
-        return cls(fn, query, T_q, [], weight)
+        return cls(src, query, T_q, [], weight)
 
     def add(self, line, no):
         'Parse and add an input record.'
@@ -380,7 +385,7 @@ class RetrievalList:
                 raise InputFormatError(
                     'Column 1 should have shown record relevancy as 0 or 1.\n'
                     'Column 2 should have shown the record score as a float.',
-                    self.filename, no, line)
+                    self.source, no, line)
         self.records.append((bool(relevance), score))
 
     def __iter__(self):
@@ -395,16 +400,21 @@ class BlankLineSignal(Exception):
 
 class InputFormatError(Exception):
     'Input text could not be parsed.'
-    def __init__(self, message, filename, line_number, line):
-        super().__init__(message, filename, line_number, line)
-        self.filename = filename
+    def __init__(self, message, source, line_number, line):
+        if not isinstance(source, str):
+            # Limit source description to 99 characters.
+            source = repr(source)
+            if len(source) >= 100:
+                source = '{}...{}'.format(source[:48], source[-48:])
+        super().__init__(message, source, line_number, line)
+        self.source = source
         self.message = message
         self.line_number = line_number
         self.line = line
 
     def __str__(self):
         location = ('Offending input file: {}, line: {}'
-                    .format(self.filename, self.line_number))
+                    .format(self.source, self.line_number))
         return '\n'.join((self.message, location, self.line))
 
 class InputValueError(Exception):
