@@ -416,8 +416,9 @@ def zerotoone(expr):
     Make sure expr is a float in the interval ]0..1].
     '''
     q = float(expr)
-    if q <= 0 or q > 1:
-        raise argparse.ArgumentError(expr, 'violation of 0 < q <= 1')
+    if not 0 < q <= 1:
+        raise argparse.ArgumentTypeError(
+            'violation of 0 < q <= 1 (given: {})'.format(expr))
     return q
 
 
