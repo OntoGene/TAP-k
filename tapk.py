@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # coding: utf8
 
-# Author: Lenz Furrer, 2016
+# Author: Lenz Furrer, 2016--2018
 
 
 """
@@ -9,7 +9,7 @@ Compute Threshold Average Precision at (a median of) k errors per query.
 """
 
 
-__version__ = '1.0b'
+__version__ = '1.0'
 
 
 import re as _re

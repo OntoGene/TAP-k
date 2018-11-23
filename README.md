@@ -47,7 +47,7 @@ The output format can be changed by specifying format strings (options `-f` and 
 
 The module can also be used as a library:
 
-```python
+```pycon
 >>> import tapk
 >>> tapk.run(["test/short.tsv"], k=5)
 EPQ (threshold at 0.5 quantile)	unweighted mean TAP

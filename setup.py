@@ -28,15 +28,14 @@ setup(
     description='Threshold Average Precision: '
                 'metric for evaluating retrieval rankings',
     long_description=long_description,
+    long_description_content_type="text/markdown",
     url='https://github.com/OntoGene/TAP-k',
     author='Lenz Furrer',
     author_email='furrer@cl.uzh.ch',
     classifiers=[
-        # Supported Python versions.
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
+        'License :: OSI Approved :: BSD License',
+        'Operating System :: OS Independent',
     ],
     python_requires='>=3',
     py_modules=['tapk'],
