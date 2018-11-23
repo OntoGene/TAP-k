@@ -4,9 +4,9 @@
 # Author: Lenz Furrer, 2016
 
 
-'''
+"""
 Compute Threshold Average Precision at (a median of) k errors per query.
-'''
+"""
 
 
 __version__ = '1.0b'
@@ -34,9 +34,9 @@ QUERY_FMT_UNW = '{query}\t{tap:.4f}'
 
 
 def main():
-    '''
+    """
     Run from commandline.
-    '''
+    """
     ap = _argparse.ArgumentParser(description=__doc__)
     inparams = ap.add_argument_group('input')
     inparams.add_argument(
@@ -97,9 +97,9 @@ def main():
 
 def run(infiles, k=None, e0=None, unweighted=False, monotonicity=None,
         **params):
-    '''
+    """
     Run with keyword args.
-    '''
+    """
     # Parse and sanity-check the retrieval lists.
     retlists = [rl for src in infiles for rl in parserecords(src, unweighted)]
     monotonicity = _sanity_check(retlists, monotonicity)
@@ -124,9 +124,9 @@ def run(infiles, k=None, e0=None, unweighted=False, monotonicity=None,
 
 def _run_one(quantile=QUANTILE, output=_sys.stdout, show_query_wise_result=False,
              summary_format=None, query_format=None, **params):
-    '''
+    """
     Evaluate and output TAP for one value of k or E0.
-    '''
+    """
     # Result computation.
     result = evaluate(quantile=quantile, **params)
 
@@ -151,9 +151,9 @@ def _run_one(quantile=QUANTILE, output=_sys.stdout, show_query_wise_result=False
 
 def evaluate(retlists, quantile=QUANTILE, e0=None, pad_insufficient=False,
              **params):
-    '''
+    """
     Calculate TAP-k for multiple queries.
-    '''
+    """
     if e0 is None:
         e0 = _determine_E0(retlists, quantile=quantile,
                            pad_insufficient=pad_insufficient, **params)
@@ -161,9 +161,9 @@ def evaluate(retlists, quantile=QUANTILE, e0=None, pad_insufficient=False,
 
 
 def _evaluate_e0(retlists, e0, ascending, k=None):
-    '''
+    """
     Calculate TAP for a given threshold, for multiple queries.
-    '''
+    """
     if ascending:
         def past_E0(score):
             'E value is beyond E0.'
@@ -184,9 +184,9 @@ QueryResult = _namedtuple('QueryResult', 'query tap weight T_q')
 
 
 def tap(records, past_E0, e0_nan):
-    '''
+    """
     Threshold average precision for one query.
-    '''
+    """
     summed_precision = 0.0
     rel_count = 0  # number of relevant records seen so far
     retrieved = 0  # number of records considered
@@ -218,7 +218,7 @@ def tap(records, past_E0, e0_nan):
 
 
 def _determine_E0(retlists, k, quantile, ascending, pad_insufficient):
-    '''
+    """
     Determine E_k(A) based on the retrieved records.
 
     Args:
@@ -230,7 +230,7 @@ def _determine_E0(retlists, k, quantile, ascending, pad_insufficient):
             median
         ascending (bool): True if the E values increase
             from best to worst.
-    '''
+    """
     # Collect the E value at k errors for each query.
     E_k = []
     total_weights = 0.0
@@ -269,9 +269,9 @@ def _determine_E0(retlists, k, quantile, ascending, pad_insufficient):
 
 
 def _weighted_quantile(weighted_scores, quantile, total_weights):
-    '''
+    """
     Walk through the sorted scores until quantile is reached.
-    '''
+    """
     quantile *= total_weights  # spread q to the absolute weight scale
     quantile *= 1.0 - 1e-12  # don't miss it because of imprecision
     summed_weight = 0.0
@@ -285,7 +285,7 @@ def _weighted_quantile(weighted_scores, quantile, total_weights):
 
 
 def _sanity_check(retlists, monotonicity):
-    '''
+    """
     Thoroughly check the retrieval lists and determine monotonicity.
 
     Any failure raises an InputError.
@@ -299,7 +299,7 @@ def _sanity_check(retlists, monotonicity):
       * is given in each list
       * is consistent among all lists
       * if given through -m, is consistent with the data
-    '''
+    """
     if not retlists:
         raise InputError('no retrieval list found')
     for records in retlists:
@@ -315,9 +315,9 @@ def _sanity_check(retlists, monotonicity):
 
 
 def parserecords(source, unweighted=False):
-    '''
+    """
     Iterate over _RetrievalList instances parsed from plain-text.
-    '''
+    """
     current = None
     stream = enumerate(_smartopen(source))
     for i, line in stream:
@@ -341,9 +341,9 @@ def parserecords(source, unweighted=False):
 
 
 def _smartopen(source):
-    '''
+    """
     Open file if necessary and iterate over its lines.
-    '''
+    """
     if source == '-':
         # STDIN.
         yield from _sys.stdin
@@ -357,9 +357,9 @@ def _smartopen(source):
 
 
 class _RetrievalList:
-    '''
+    """
     A list of rated records and some metadata.
-    '''
+    """
     __slots__ = ('source', 'query', 'weight', 'T_q', 'records')
 
     def __init__(self, source, query, T_q, records, weight=1.0):
@@ -371,9 +371,9 @@ class _RetrievalList:
 
     @classmethod
     def incremental_factory(cls, line1, line2, src, no, unweighted=False):
-        '''
+        """
         Constructor for incremental building through parsing.
-        '''
+        """
         # Parse the header lines and be specific about any failure.
         try:
             query, weight = line1.split()
@@ -408,7 +408,7 @@ class _RetrievalList:
         return cls(src, query, T_q, [], weight)
 
     def add(self, line, no):
-        'Parse and add an input record.'
+        """Parse and add an input record."""
         try:
             relevance, score, *_ = line.split()
             relevance = int(relevance)
@@ -426,9 +426,9 @@ class _RetrievalList:
         self.records.append((bool(relevance), score))
 
     def check_rel_count(self):
-        '''
+        """
         The number of records marked as relevant must not exceed T_q.
-        '''
+        """
         total = sum(rel for rel, _ in self)
         if total > self.T_q:
             raise InputValueError(
@@ -437,9 +437,9 @@ class _RetrievalList:
                 self.source, self.query)
 
     def check_monotonicity(self, given):
-        '''
+        """
         Check and (if necessary) determine monotonicity.
-        '''
+        """
         found = None
         for a, b in self._bigram_scores():
             found = self._monotonicity(a, b)
@@ -481,13 +481,13 @@ class _RetrievalList:
 
 
 class _BlankLineSignal(Exception):
-    'Empty input line.'
+    """Empty input line."""
 
 class InputError(Exception):
-    'Unspecific input-related problem.'
+    """Unspecific input-related problem."""
 
 class _LocatableInputError(InputError):
-    'Base class for errors with a specific source.'
+    """Base class for errors with a specific source."""
     def __init__(self, message, source, *args):
         if not isinstance(source, str):
             # Limit source description to 99 characters.
@@ -499,7 +499,7 @@ class _LocatableInputError(InputError):
         self.message = message
 
 class InputFormatError(_LocatableInputError):
-    'Input text could not be parsed.'
+    """Input text could not be parsed."""
     def __init__(self, message, source, line_number, line):
         super().__init__(message, source, line_number, line)
         self.line_number = line_number
@@ -511,7 +511,7 @@ class InputFormatError(_LocatableInputError):
         return '\n'.join((self.message, location, self.line))
 
 class InputValueError(_LocatableInputError):
-    'Input is incomplete or inconsistent.'
+    """Input is incomplete or inconsistent."""
     def __init__(self, message, source, query):
         super().__init__(message, source, query)
         self.query = query
@@ -522,9 +522,9 @@ class InputValueError(_LocatableInputError):
 
 
 def _posint(expr):
-    '''
+    """
     Make sure expr is a positive integer.
-    '''
+    """
     try:
         k = int(expr)
     except ValueError:
@@ -537,9 +537,9 @@ def _posint(expr):
 
 
 def _zerotoone(expr):
-    '''
+    """
     Make sure expr is a float in the interval ]0..1].
-    '''
+    """
     try:
         q = float(expr)
     except ValueError:
@@ -552,13 +552,13 @@ def _zerotoone(expr):
 
 
 def _unescape_backslashes(expr):
-    '''
+    r"""
     Process a few backslash sequences.
 
     Replace \t, \n, and \r in format strings
     with the actual tab/newline characters,
     unless preceded by another backslash.
-    '''
+    """
     mapping = {r'\t': '\t', r'\n': '\n', r'\r': '\r'}
     def map_(match):
         'Map the sequence to its character.'
