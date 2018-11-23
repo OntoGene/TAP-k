@@ -15,6 +15,7 @@ __version__ = '1.0b'
 import re as _re
 import sys as _sys
 import math as _math
+import itertools as _it
 import numbers as _numbers
 import argparse as _argparse
 from collections import namedtuple as _namedtuple
@@ -318,26 +319,11 @@ def parserecords(source, unweighted=False):
     """
     Iterate over _RetrievalList instances parsed from plain-text.
     """
-    current = None
-    stream = enumerate(_smartopen(source))
-    for i, line in stream:
-        try:
-            current.add(line, i)
-        except AttributeError:
-            # current is None: Start a new retrieval list.
-            if line.strip():
-                # Consume the next line as well (without its line number).
-                current = _RetrievalList.incremental_factory(
-                    line, next(stream)[1], source, i, unweighted)
-        except _BlankLineSignal:
-            # This retrieval list has ended.
-            # Yield it and reset current (so it won't be yielded again,
-            # since multiple blank lines are allowed).
-            yield current
-            current = None
-    if current is not None:
-        # The last list might still need to be yielded.
-        yield current
+    lines = enumerate(map(str.strip, _smartopen(source)), 1)
+    hunks = _it.groupby(lines, key=lambda l: bool(l[1]))
+    for non_blank, hunk in hunks:
+        if non_blank:
+            yield _RetrievalList.from_lines(source, hunk, unweighted)
 
 
 def _smartopen(source):
@@ -370,11 +356,23 @@ class _RetrievalList:
         self.records = records
 
     @classmethod
-    def incremental_factory(cls, line1, line2, src, no, unweighted=False):
+    def from_lines(cls, src, lines, unweighted=False, enumerated=True):
         """
         Constructor for incremental building through parsing.
         """
-        # Parse the header lines and be specific about any failure.
+        if not enumerated:
+            lines = enumerate(lines)
+        query, T_q, weight = cls._parse_headers(src, lines, unweighted)
+        records = [cls._parse_rel_score_line(src, l, i) for i, l in lines]
+        return cls(src, query, T_q, records, weight)
+
+    @classmethod
+    def _parse_headers(cls, src, lines, unweighted=False):
+        """
+        Parse the header lines and be specific about any failure.
+        """
+        # First line: query name and optional weight.
+        no, line1 = next(lines)
         try:
             query, weight = line1.split()
         except ValueError as e:
@@ -394,36 +392,39 @@ class _RetrievalList:
                 raise InputFormatError(
                     'Column 2 in the line for a unique identifier '
                     'should be a positive weight.', src, no, line1)
+        # Override any given weight if flagged for disabling.
+        if unweighted:
+            weight = 1.0
+
+        # Second line: number of records relevant for this query.
         try:
+            no, line2 = next(lines)
             T_q = int(line2)
             if T_q < 0:
                 raise ValueError()
+        except StopIteration:
+            raise InputValueError('Unexpected end of file', src, query)
         except ValueError:
             raise InputFormatError(
                 'The line containing the number of relevant records '
-                'should be a non-negative integer', src, no+1, line2)
-        # Construct a _RetrievalList with a (yet) empty records list.
-        if unweighted:
-            weight = 1.0
-        return cls(src, query, T_q, [], weight)
+                'should be a non-negative integer', src, no, line2)
 
-    def add(self, line, no):
-        """Parse and add an input record."""
+        return query, T_q, weight
+
+    @staticmethod
+    def _parse_rel_score_line(src, line, no):
+        """Get relevance and score for one input record."""
         try:
             relevance, score, *_ = line.split()
-            relevance = int(relevance)
-            if relevance not in (0, 1):
+            if relevance not in ('0', '1'):
                 raise ValueError()
             score = float(score)
         except ValueError:
-            if not line.strip():
-                raise _BlankLineSignal()
-            else:
-                raise InputFormatError(
-                    'Column 1 should have shown record relevancy as 0 or 1.\n'
-                    'Column 2 should have shown the record score as a float.',
-                    self.source, no, line)
-        self.records.append((bool(relevance), score))
+            raise InputFormatError(
+                'Column 1 should have shown record relevancy as 0 or 1.\n'
+                'Column 2 should have shown the record score as a float.',
+                src, no, line)
+        return bool(int(relevance)), score
 
     def check_rel_count(self):
         """
@@ -441,7 +442,7 @@ class _RetrievalList:
         Check and (if necessary) determine monotonicity.
         """
         found = None
-        for a, b in self._bigram_scores():
+        for a, b in self._score_bigrams():
             found = self._monotonicity(a, b)
             if found is None:
                 continue
@@ -454,7 +455,7 @@ class _RetrievalList:
                     self.source, self.query)
         return found or given
 
-    def _bigram_scores(self):
+    def _score_bigrams(self):
         if len(self) < 2:
             # Short-circuit for insufficient lists.
             return
@@ -479,9 +480,6 @@ class _RetrievalList:
     def __len__(self):
         return len(self.records)
 
-
-class _BlankLineSignal(Exception):
-    """Empty input line."""
 
 class InputError(Exception):
     """Unspecific input-related problem."""
