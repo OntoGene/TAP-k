@@ -1,0 +1,8 @@
+build/
+dist/
+TAP_k.egg-info/
+
+test/ref-tool/
+test/ref-scores/
+
+*.pyc
