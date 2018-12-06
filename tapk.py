@@ -96,31 +96,77 @@ def main():
         pass
 
 
-def run(infiles, k=None, e0=None, unweighted=False, monotonicity=None,
-        **params):
+def tapk(infiles, **params):
     """
-    Run with keyword args.
+    Compute TAP-k for one value of k or E0.
+
+    Args:
+        infiles (iterable of sources): retrieval lists
+            (source can be a path or any line iterator)
+        e0 (float): predetermined threshold
+            (required if k is not specified)
+        k (float): number of errors for determining E0
+            (ignored if e0 is given)
+        monotonicity (str): scores or E-values?
+            (value must be "asc", "desc", or None)
+        quantile (float): how many lists should have at
+            most k errors? (ignored if e0 is given)
+        unweighted (bool): same weight for all retrieval
+            lists
+        pad_insufficient (bool): pad insufficient retrieval
+            lists with irrelevant records
+
+    Returns:
+        results: a namedtuple with overall TAP and detailed
+            scores for all queries
     """
+    name, value, params = _prepare(infiles, **params)
+    params[name] = value
+    return evaluate(**params)
+
+
+def run(infiles, **params):
+    """
+    Produce formatted output for one or more values of k/E0.
+    """
+    name, values, params = _prepare(infiles, **params)
+    # Iterate over multiple values of E0 or k, depending on what is given.
+    if isinstance(values, _numbers.Number):
+        values = (values,)
+    for v in values:
+        params[name] = v
+        _run_one(**params)
+
+
+def _prepare(infiles, **params):
+    params = _short_options(**params)
+    return _read_input(infiles, **params)
+
+
+def _short_options(t=None, m=None, q=QUANTILE, u=False, p=False, **params):
+    # Accept the short-option letters from the CLI.
+    params.setdefault('e0', t)
+    params.setdefault('monotonicity', m)
+    params.setdefault('quantile', q)
+    params.setdefault('unweighted', u)
+    params.setdefault('pad_insufficient', p)
+    return params
+
+
+def _read_input(infiles, e0, k=None, unweighted=False, monotonicity=None,
+                **params):
+    # Determine the main parameter.
+    if e0 is not None:
+        name, value = 'e0', e0
+    elif k is not None:
+        name, value = 'k', k
+    else:
+        raise ValueError('either k or e0 must be specified')
     # Parse and sanity-check the retrieval lists.
     retlists = [rl for src in infiles for rl in parserecords(src, unweighted)]
     monotonicity = _sanity_check(retlists, monotonicity)
     params.update(retlists=retlists, ascending=monotonicity == ASC)
-
-    # Iterate over multiple values of E0 or k, depending on what is given.
-    if e0 is not None:
-        elems = e0
-        p = 'e0'
-    elif k is not None:
-        elems = k
-        p = 'k'
-    else:
-        raise ValueError('either k or e0 must be specified')
-    if isinstance(elems, _numbers.Number):
-        elems = (elems,)
-
-    for e in elems:
-        params[p] = e
-        _run_one(**params)
+    return name, value, params
 
 
 def _run_one(quantile=QUANTILE, output=_sys.stdout, show_query_wise_result=False,

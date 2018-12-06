@@ -14,13 +14,6 @@ import tapk
 
 
 TESTROOT = Path(__file__).parent
-CANONICAL_PARAMS = {
-    't': 'e0',
-    'm': 'monotonicity',
-    'q': 'quantile',
-    'u': 'unweighted',
-    'p': 'pad_insufficient',
-}
 
 
 class ScoreTest(unittest.TestCase):
@@ -33,7 +26,6 @@ class ScoreTest(unittest.TestCase):
         params = {p[0]: self._paramtype(p[1:]) for p in params}
         src_path = TESTROOT/'retlists'/'{}.tsv'.format(case)
         with self.subTest(case=case, **params):
-            params = {CANONICAL_PARAMS.get(k, k): v for k, v in params.items()}
             with ref_path.open() as ref, src_path.open() as src:
                 scores = io.StringIO()
                 tapk.run([src], output=scores, show_query_wise_result=True,
