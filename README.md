@@ -12,7 +12,7 @@ This Python module is based on the authors' reference implementation written in 
 
 Use `pip` for a system-wide installation:
 
-    pip3 install git+https://github.com/OntoGene/TAP-k.git
+    pip3 install TAP-k
 
 Or simply download the stand-alone script [tapk.py](https://github.com/OntoGene/TAP-k/blob/master/tapk.py).
 
